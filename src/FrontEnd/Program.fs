@@ -2,21 +2,29 @@
 
 open Interpreter
 
-let testInput1 =
+// let testInput =
+    // [
+        // "foo"
+        // "    foo"
+        // "\tfoo"
+        // "foo   "
+        // "   foo   "
+        // "foo (bar)"
+        // "(bar) foo"
+        // "   (bar)   foo"
+    // ] |> String.concat "\n"
+
+let testInput =
     [
-        "foo"
-        "    foo"
-        "\tfoo"
-        "foo   "
-        "   foo   "
-        "foo (bar)"
-        "(bar) foo"
-        "   (bar)   foo"
+        "break"
+        "break,"
+        "    break! (one nine!)"
+        "(if you) continue (your heart)"
     ] |> String.concat "\n"
 
 [<EntryPoint>]
 let main argv =
-    let result = Parser.parse testInput1
+    let result = Parser.parse testInput
     printfn "%A" result
 
     0
