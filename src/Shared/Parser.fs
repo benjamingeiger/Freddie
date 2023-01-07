@@ -1,6 +1,8 @@
-﻿namespace Interpreter
+﻿namespace Freddie.Shared
 
 open FParsec
+
+open Freddie.Shared.AST
 
 module Parser =
 
@@ -66,24 +68,6 @@ module Parser =
             else
                 stream.BacktrackTo state
                 Reply(Error, messageError "keyword values are not valid here")
-
-
-    // ======================================================================
-    // AST
-    // ======================================================================
-
-    type Identifier = Identifier of string
-
-    and Expression =
-        | StringLiteral of string
-        | NumericLiteral of double
-        | BooleanLiteral of bool
-
-    and Statement =
-        | Output of Expression
-
-    and Block = Block of Statement list
-
 
     // ======================================================================
     // Parsers

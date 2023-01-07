@@ -1,6 +1,6 @@
 ﻿open System
 
-open Interpreter
+open Freddie.Shared
 
 // let testInput =
     // [
