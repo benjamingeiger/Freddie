@@ -77,6 +77,7 @@ module Parser =
     and Expression =
         | StringLiteral of string
         | NumericLiteral of double
+        | BooleanLiteral of bool
 
     and Statement =
         | Output of Expression
@@ -113,12 +114,25 @@ module Parser =
     let statement, statementRef = createParserForwardedToRef<Statement, unit>()
 
     let (stringLiteral : Parser<Expression, unit>) = skipChar '"' >>. (manyChars (noneOf "\n\"")) .>> skipChar '"' |>> StringLiteral
+    let emptyString = ["empty"; "silent"; "silence"] |> List.map pstringCI |> choice >>% StringLiteral ""
 
-    // let numericLiteral = 
+    let trueConstant = ["true"; "ok"; "right"; "yes"] |> List.map pstringCI |> choice >>% BooleanLiteral true
+    let falseConstant = ["false"; "lies"; "wrong"; "no"] |> List.map pstringCI |> choice >>% BooleanLiteral false
+
+    // I know I should probably use FParsec's pfloat for this but it handles
+    // things that Rockstar doesn't support and vice versa. -- bgeiger, 2023-01-06
+    let (numericLiteralFractionalPart : Parser<_, unit>)  = manyChars2 (pchar '.') digit
+    let numericLiteral =
+        notEmpty ((opt (pchar '-')) .>>. manyChars digit .>>. numericLiteralFractionalPart)
+        |>> fun ((signChar, wholeDigits), fractional) ->
+            (sprintf "%c%s%s" (Option.defaultValue ' ' signChar) wholeDigits fractional |> float |> NumericLiteral)
 
     let expression = choice [
         stringLiteral
-        //<|> numericLiteral
+        emptyString
+        trueConstant
+        falseConstant
+        numericLiteral
     ]
 
     let output = (["say"; "shout"; "whisper"; "scream"] |> List.map pstringCI |> choice) >>. __ >>. expression |>> Output
@@ -127,4 +141,6 @@ module Parser =
     let line = __ >>. statement .>> (EOF <|> (skipMany1 EOL))
     let program = many line
 
-    let parse = runParserOnString program () ""
+    let parse source = runParserOnString program () "" source |> function
+        | Success (result, _, _) -> Result.Ok result
+        | Failure (errorAsString, _, _) -> Result.Error errorAsString
