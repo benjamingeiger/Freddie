@@ -14,12 +14,17 @@ open Interpreter
         // "   (bar)   foo"
     // ] |> String.concat "\n"
 
+// let testInput =
+    // [
+        // "break"
+        // "break,"
+        // "    break! (one nine!)"
+        // "(if you) continue (your heart)"
+    // ] |> String.concat "\n"
+
 let testInput =
     [
-        "break"
-        "break,"
-        "    break! (one nine!)"
-        "(if you) continue (your heart)"
+        "shout \"herp derp\""
     ] |> String.concat "\n"
 
 [<EntryPoint>]
