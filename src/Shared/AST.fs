@@ -10,6 +10,7 @@ module AST =
         | BooleanLiteral of bool
 
     and Statement =
+        | Null
         | Output of Expression
 
     and Block = Block of Statement list

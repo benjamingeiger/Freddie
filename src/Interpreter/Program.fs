@@ -31,6 +31,12 @@ let testInput =
         "shout 0.123"
         "shout .456"
         "shout 789"
+        "(ignore this)"
+        "(and this) shout \"but not this\""
+        ""
+        ""
+        ""
+        "shout \"yet another\""
     ] |> String.concat "\n"
 
 [<EntryPoint>]

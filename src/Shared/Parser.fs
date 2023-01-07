@@ -69,6 +69,14 @@ module Parser =
                 stream.BacktrackTo state
                 Reply(Error, messageError "keyword values are not valid here")
 
+    // debugging operator borrowed from the FParsec docs. -- bgeiger, 2023-01-07
+    // let (<!>) label (p: Parser<_,_>) : Parser<_,_> =
+        // fun stream ->
+            // printfn "%A: Entering %s" stream.Position label
+            // let reply = p stream
+            // printfn "%A: Leaving %s (%A)" stream.Position label reply.Status
+            // reply
+
     // ======================================================================
     // Parsers
     // ======================================================================
@@ -82,17 +90,14 @@ module Parser =
     // Markup details (comments, whitespace)
     // ----------------------------------------------------------------------
 
-    let noiseChars = ";.?!&."
-
     let comment = (skipChar '(') >>. (skipCharsTillString ")" true System.Int32.MaxValue)
-    let whitespace = many1Chars (anyOf " \t") |>> ignore
-    let __ = many (whitespace <|> comment) |>> ignore
+    let whitespace = skipMany1 (anyOf " \t")
+    let __ = skipMany (whitespace <|> comment)
     let __' = notEmpty __
 
-    let noise = many (__' <|> skipAnyOf noiseChars)
+    let noise = skipMany (__' <|> skipAnyOf ";,.?!&")
 
     let EOL = noise >>. skipNewline
-    let EOF = noise >>. eof
 
     // Forward reference for statements
     let statement, statementRef = createParserForwardedToRef<Statement, unit>()
@@ -106,24 +111,24 @@ module Parser =
     // I know I should probably use FParsec's pfloat for this but it handles
     // things that Rockstar doesn't support and vice versa. -- bgeiger, 2023-01-06
     let (numericLiteralFractionalPart : Parser<_, unit>)  = manyChars2 (pchar '.') digit
-    let numericLiteral =
-        notEmpty ((opt (pchar '-')) .>>. manyChars digit .>>. numericLiteralFractionalPart)
-        |>> fun ((signChar, wholeDigits), fractional) ->
-            (sprintf "%c%s%s" (Option.defaultValue ' ' signChar) wholeDigits fractional |> float |> NumericLiteral)
+    let numericLiteral = 
+        (notEmpty ((opt (pchar '-')) .>>. manyChars digit .>>. numericLiteralFractionalPart)
+            |>> fun ((signChar, wholeDigits), fractional) ->
+                (sprintf "%c%s%s" (Option.defaultValue ' ' signChar) wholeDigits fractional |> float |> NumericLiteral))
 
-    let expression = choice [
+    let expression = (choice [
         stringLiteral
         emptyString
         trueConstant
         falseConstant
-        numericLiteral
-    ]
+        numericLiteral ])
 
-    let output = (["say"; "shout"; "whisper"; "scream"] |> List.map pstringCI |> choice) >>. __ >>. expression |>> Output
+    let output = (["say"; "shout"; "whisper"; "scream"] |> List.map pstringCI |> choice) >>. __' >>. expression |>> Output
+    let (nullStatement : Parser<_, unit>) = preturn Null
 
-    do statementRef.Value <- __ >>. choice [ output ]
-    let line = __ >>. statement .>> (EOF <|> (skipMany1 EOL))
-    let program = many line
+    do statementRef.Value <- __ >>. choice [ output; nullStatement ]
+    let line = __ >>. statement .>> noise
+    let program = sepBy line EOL
 
     let parse source = runParserOnString program () "" source |> function
         | Success (result, _, _) -> Result.Ok result
