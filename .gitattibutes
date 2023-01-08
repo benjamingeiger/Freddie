@@ -1,0 +1,4 @@
+*		text=auto
+*.fs		text
+*.fsproj	text
+*.sln		text
