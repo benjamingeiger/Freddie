@@ -118,20 +118,21 @@ module Parsers =
 
     let EOL = "EOL" **-> (opt noise) >>. skipNewline
 
-    // Forward reference for statements
+    // Forward references
     let statement, statementRef = createParserForwardedToRef<Statement, unit>()
+    let expression, expressionRef = createParserForwardedToRef<Expression, unit>()
 
-    let (stringValue : Parser<Expression, unit>) = "stringValue" **-> skipChar '"' >>. (manyChars (noneOf "\n\"")) .>> skipChar '"' |>> StringValue
+    let (stringLiteral : Parser<Expression, unit>) = "stringLiteral" **-> skipChar '"' >>. (manyChars (noneOf "\n\"")) .>> skipChar '"' |>> StringValue
 
     let trueConstant = "trueConstant" **-> keyword ["true"; "ok"; "right"; "yes"] >>% BooleanValue true
     let falseConstant = "falseConstant" **-> keyword ["false"; "lies"; "wrong"; "no"] >>% BooleanValue false
 
     // I know I should probably use FParsec's pfloat for this but it handles
     // things that Rockstar doesn't support and vice versa. -- bgeiger, 2023-01-06
-    let (numericValueFractionalPart : Parser<_, unit>)  = manyChars2 (pchar '.') digit
-    let numericValue = 
-        "numericValue" **->
-        (notEmpty ((opt (pchar '-')) .>>. manyChars digit .>>. numericValueFractionalPart)
+    let (numericLiteralFractionalPart : Parser<_, unit>)  = manyChars2 (pchar '.') digit
+    let numericLiteral = 
+        "numericLiteral" **->
+        (notEmpty ((opt (pchar '-')) .>>. manyChars digit .>>. numericLiteralFractionalPart)
             |>> fun ((signChar, wholeDigits), fractional) ->
                 (sprintf "%c%s%s" (Option.defaultValue ' ' signChar) wholeDigits fractional |> float |> NumericValue))
 
@@ -168,20 +169,39 @@ module Parsers =
 
     let poeticEmptyString = "poeticEmptyString" **-> keyword ["empty"; "silent"; "silence"] >>% StringValue ""
 
+    let simpleExpression = "simpleExpression" **-> (choice [
+        stringLiteral
+        trueConstant
+        falseConstant
+        numericLiteral
+        attempt variable
+        poeticEmptyString ])
+
     let add = "add" **-> __ >>. keyword ["+"; "plus"; "with"] .>> __' >>% Add
     let subtract = "subtract" **-> __ >>. keyword ["-"; "minus"; "without"] .>> __' >>% Subtract
     let multiply = "multiply" **-> __ >>. keyword ["*"; "times"; "of"] .>> __' >>% Multiply
     let divide = "divide" **-> __ >>. keyword ["/"; "over"; "between"] .>> __' >>% Divide
 
+    let rec product =
+        "product" **->
+            simpleExpression .>> __ .>>. opt ((multiply <|> divide) .>> __ .>>. expression)
+            |>> fun (left, right) ->
+                match right with
+                | None -> left
+                // TODO: I'm pretty sure this pooches precedence but I'll get back to it. -- bgeiger, 2023-01-08
+                | Some (operator, right') -> BinaryOperation (left, operator, right')
+
+    // let arithmetic = "arithmetic" **-> 
+
     let compoundableOperator = [ add; subtract; multiply; divide ] |> List.map attempt |> choice
 
-    let expression = "expression" **-> (choice [
-        stringValue
-        trueConstant
-        falseConstant
-        numericValue
-        variable
-        poeticEmptyString ])
+    let expressionParsers =
+        [
+            product
+            simpleExpression
+        ]
+
+    do expressionRef.Value <- "expression" **-> (expressionParsers |> List.map attempt |> choice)
 
     let poeticNumericAssignment =
         "poeticNumericAssignment" **->
@@ -198,6 +218,11 @@ module Parsers =
             pstringCI "let" >>. __ >>. assignable .>> __ .>> pstringCI "be" .>> __ .>>. compoundableOperator .>>. expression
             |>> fun ((target, operator), value) -> Assignment (target, BinaryOperation (target, operator, value))
 
+    let directAssignment =
+        "directAssignment" **->
+            pstringCI "let" >>. __ >>. assignable .>> __ .>> pstringCI "be" .>> __ .>>. expression
+            |>> fun (target, value) -> Assignment (target, value)
+
     let output = "output" **-> (keyword ["say"; "shout"; "whisper"; "scream"]) >>. __' >>. expression |>> Output
     let (nullStatement : Parser<_, unit>) = "nullStatement" **-> preturn Null
 
@@ -207,6 +232,7 @@ module Parsers =
             poeticNumericAssignment
             poeticStringAssignment
             compoundAssignment
+            directAssignment
             nullStatement
         ]
 
