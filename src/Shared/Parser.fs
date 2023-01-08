@@ -1,10 +1,9 @@
-﻿namespace Freddie.Shared
+﻿module Freddie.Shared.Parser
 
 open FParsec
-
 open Freddie.Shared.AST
 
-module Parser =
+module Parsers =
 
     let toLower (s: string) = if isNull s then s else s.ToLowerInvariant ()
 
@@ -152,8 +151,8 @@ module Parser =
         "variable" **->
             choice [ 
                 attempt pronoun
-                attempt properVariable
                 attempt commonVariable
+                attempt properVariable
                 attempt simpleVariable
             ]
 
@@ -169,15 +168,19 @@ module Parser =
 
     let poeticEmptyString = "poeticEmptyString" **-> keyword ["empty"; "silent"; "silence"] >>% StringValue ""
 
+    let add = "add" **-> __ >>. keyword ["+"; "plus"; "with"] .>> __' >>% Add
+    let subtract = "subtract" **-> __ >>. keyword ["-"; "minus"; "without"] .>> __' >>% Subtract
+    let multiply = "multiply" **-> __ >>. keyword ["*"; "times"; "of"] .>> __' >>% Multiply
+    let divide = "divide" **-> __ >>. keyword ["/"; "over"; "between"] .>> __' >>% Divide
+
+    let compoundableOperator = [ add; subtract; multiply; divide ] |> List.map attempt |> choice
+
     let expression = "expression" **-> (choice [
         stringValue
         trueConstant
         falseConstant
         numericValue
-        pronoun
-        properVariable
-        commonVariable
-        simpleVariable
+        variable
         poeticEmptyString ])
 
     let poeticNumericAssignment =
@@ -190,6 +193,11 @@ module Parser =
             assignable .>> __ .>> says .>> pchar ' ' .>>. restOfLine false
             |>> fun (variable, value) -> Assignment (variable, StringValue value)
 
+    let compoundAssignment =
+        "compoundAssignment" **->
+            pstringCI "let" >>. __ >>. assignable .>> __ .>> pstringCI "be" .>> __ .>>. compoundableOperator .>>. expression
+            |>> fun ((target, operator), value) -> Assignment (target, BinaryOperation (target, operator, value))
+
     let output = "output" **-> (keyword ["say"; "shout"; "whisper"; "scream"]) >>. __' >>. expression |>> Output
     let (nullStatement : Parser<_, unit>) = "nullStatement" **-> preturn Null
 
@@ -198,6 +206,7 @@ module Parser =
             output
             poeticNumericAssignment
             poeticStringAssignment
+            compoundAssignment
             nullStatement
         ]
 
@@ -205,6 +214,6 @@ module Parser =
     let line = "line" **-> __ >>. statement .>> noise
     let program = "program" **-> sepBy line EOL .>> eof
 
-    let parse source = runParserOnString program () "" source |> function
-        | Success (result, _, _) -> Result.Ok result
-        | Failure (errorAsString, _, _) -> Result.Error errorAsString
+let parse source = runParserOnString Parsers.program () "" source |> function
+    | Success (result, _, _) -> Result.Ok result
+    | Failure (errorAsString, _, _) -> Result.Error errorAsString

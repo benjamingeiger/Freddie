@@ -4,12 +4,19 @@ module AST =
 
     type Identifier = Identifier of string
 
+    and Operator =
+        | Add
+        | Subtract
+        | Multiply
+        | Divide
+
     and Expression =
         | StringValue of string
         | NumericValue of double
         | BooleanValue of bool
         | Variable of string
         | Pronoun
+        | BinaryOperation of Expression * Operator * Expression
 
     and Statement =
         | Null
