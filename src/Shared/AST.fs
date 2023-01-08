@@ -5,15 +5,16 @@ module AST =
     type Identifier = Identifier of string
 
     and Expression =
-        | StringLiteral of string
-        | NumericLiteral of double
-        | BooleanLiteral of bool
+        | StringValue of string
+        | NumericValue of double
+        | BooleanValue of bool
         | Variable of string
         | Pronoun
 
     and Statement =
         | Null
         | Output of Expression
+        | Assignment of Expression * Expression
 
     and Block = Block of Statement list
 

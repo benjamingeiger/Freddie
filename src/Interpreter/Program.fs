@@ -42,7 +42,9 @@ let testInput =
         "shout \"yet another\""
         "whisper my name"
         "scream everything"
-        "say Jumpin' Jack Flash"
+        "say Jumpin Jack Flash"
+        "My dreams were ice. A life unfulfilled; wakin' everybody up, taking booze and pills"
+        "They said we'd never make it"
     ] |> String.concat "\n"
 
 [<EntryPoint>]

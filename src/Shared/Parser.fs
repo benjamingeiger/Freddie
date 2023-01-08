@@ -16,7 +16,7 @@ module Parser =
         [
             "he"; "her"; "him"; "hir"; "it"; "she"; "them"; "they"; "ve"; "ver";
             "xe"; "xem"; "ze"; "zie"; "zir"
-        ] |> List.sortByDescending String.length
+        ]
     let commonPrefixList = [ "a"; "an"; "my"; "our"; "the"; "your" ]
     let literalList = [
         "definitely"; "empty"; "false"; "false"; "gone"; "lies"; "maybe";
@@ -74,20 +74,25 @@ module Parser =
                 reply
 
     // debugging operator borrowed from the FParsec docs. -- bgeiger, 2023-01-07
-    // let ( **-> ) label (p: Parser<_,_>) : Parser<_,_> =
-        // fun stream ->
-            // printfn "%A: Entering %s" stream.Position label
-            // let reply = p stream
-            // printfn "%A: Leaving %s (%A)" stream.Position label reply.Status
-            // reply
+    let ( **-> ) label (p: Parser<_,_>) : Parser<_,_> =
+        let DEBUG = true
+        // let DEBUG = false
+        if DEBUG then
+            fun stream ->
+                printfn "%A: Entering %s" stream.Position label
+                let reply = p stream
+                printfn "%A: Leaving %s (%A)" stream.Position label reply.Status
+                reply
+        else p
 
-    let ( **-> ) _ (p: Parser<_,_>) : Parser<_,_> = p
 
     let keyword (keywords : string list) : Parser<string, unit> =
         keywords
         |> List.sortByDescending String.length
         |> List.map (pstringCI)
         |> choice
+
+    let sepBy' p sep = pipe2 p (many (sep >>. p)) (fun hd tl -> hd::tl) <|>% []
 
     // ======================================================================
     // Parsers
@@ -96,66 +101,107 @@ module Parser =
     let uppercaseLetters = "ABCDEFGHIJKLMNOPQRSTUVWXYZÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖØÙÚÛÜÝÞĀĂĄĆĈĊČĎĐĒĔĖĘĚĜĞĠĢĤĦĨĪĬĮİĲĴĶĸĹĻĽĿŁŃŅŇŊŌŎŐŒŔŖŘŚŜŞŠŢŤŦŨŪŬŮŰŲŴŶŸŹŻŽ"
     let lowercaseLetters = "abcdefghijklmnopqrstuvwxyzàáâãäåæçèéêëìíîïðñòóôõöøùúûüýþāăąćĉċčďđēĕėęěĝğġģĥħĩīĭįıĳĵķĸĺļľŀłńņňŋōŏőœŕŗřśŝşšţťŧũūŭůűųŵŷÿźżžŉß"
     let letters = uppercaseLetters + lowercaseLetters
-    let (word : Parser<_, unit>) = many1Chars (anyOf letters)
+    let noiseChars = ";,.?!&'"
+    let poeticDigitSeparators = " \t0123456789',;:?!+_/"
 
     // ----------------------------------------------------------------------
     // Markup details (comments, whitespace)
     // ----------------------------------------------------------------------
+
+    let (word : Parser<_, unit>) = many1Chars (anyOf letters)
 
     let comment = "comment" **-> (skipChar '(') >>. (skipCharsTillString ")" true System.Int32.MaxValue)
     let whitespace = "whitespace" **-> skipMany1 (anyOf " \t")
     let __ = "__" **-> skipMany (whitespace <|> comment)
     let __' = "__'" **-> notEmpty __
 
-    let noise = "noise" **-> skipMany (__' <|> skipAnyOf ";,.?!&i'")
+    let noise = "noise" **-> skipMany (__' <|> skipAnyOf noiseChars)
 
     let EOL = "EOL" **-> (opt noise) >>. skipNewline
 
     // Forward reference for statements
     let statement, statementRef = createParserForwardedToRef<Statement, unit>()
 
-    let (stringLiteral : Parser<Expression, unit>) = "stringLiteral" **-> skipChar '"' >>. (manyChars (noneOf "\n\"")) .>> skipChar '"' |>> StringLiteral
+    let (stringValue : Parser<Expression, unit>) = "stringValue" **-> skipChar '"' >>. (manyChars (noneOf "\n\"")) .>> skipChar '"' |>> StringValue
 
-    let trueConstant = "trueConstant" **-> keyword ["true"; "ok"; "right"; "yes"] >>% BooleanLiteral true
-    let falseConstant = "falseConstant" **-> keyword ["false"; "lies"; "wrong"; "no"] >>% BooleanLiteral false
+    let trueConstant = "trueConstant" **-> keyword ["true"; "ok"; "right"; "yes"] >>% BooleanValue true
+    let falseConstant = "falseConstant" **-> keyword ["false"; "lies"; "wrong"; "no"] >>% BooleanValue false
 
     // I know I should probably use FParsec's pfloat for this but it handles
     // things that Rockstar doesn't support and vice versa. -- bgeiger, 2023-01-06
-    let (numericLiteralFractionalPart : Parser<_, unit>)  = manyChars2 (pchar '.') digit
-    let numericLiteral = 
-        "numericLiteral" **->
-        (notEmpty ((opt (pchar '-')) .>>. manyChars digit .>>. numericLiteralFractionalPart)
+    let (numericValueFractionalPart : Parser<_, unit>)  = manyChars2 (pchar '.') digit
+    let numericValue = 
+        "numericValue" **->
+        (notEmpty ((opt (pchar '-')) .>>. manyChars digit .>>. numericValueFractionalPart)
             |>> fun ((signChar, wholeDigits), fractional) ->
-                (sprintf "%c%s%s" (Option.defaultValue ' ' signChar) wholeDigits fractional |> float |> NumericLiteral))
+                (sprintf "%c%s%s" (Option.defaultValue ' ' signChar) wholeDigits fractional |> float |> NumericValue))
 
     // note to self: this is probably going to cause ordering issues, between assignment and variable definitions. -- bgeiger, 2023-01-07
     let is = "is" **-> skipStringCI "'s" <|> skipStringCI "'re" <|> (__ >>. (keyword ["is"; "was"; "are"; "were"] |>> ignore))
+    let says = "says" **-> keyword [ "say"; "says"; "said" ] |>> ignore
 
-    let name = "name" **-> many1Chars (anyOf (letters + "'")) |>> fun (s : string) -> s.Replace("'", "")
-    let properNoun = "properNoun" **-> isNotKeyword (many1Chars2 (anyOf uppercaseLetters) (anyOf (letters + "'")))
+    let properNoun = "properNoun" **-> isNotKeyword (many1Chars2 (anyOf uppercaseLetters) (anyOf (letters)))
     let properVariable = "properVariable" **-> sepBy1 properNoun (skipMany1 (pchar ' ')) |>> fun names -> names |> List.map toLower |> String.concat " " |> Variable
-    let commonPrefix = "commonPrefix" **-> keyword commonPrefixList
-    let commonVariable = "commonVariable" **-> (commonPrefix .>> __') .>>. isNotKeyword name |>> fun (prefix, name') -> Variable (toLower prefix + " " + toLower name')
-    let simpleVariable = "simpleVariable" **-> isNotKeyword name |>> (toLower >> Variable)
-    let pronoun = "pronoun" **-> ((keyword pronounList) .>> followedBy (is <|> __ <|> EOL <|> eof) >>% Pronoun)
+    let commonPrefix = "commonPrefix" **-> keyword commonPrefixList .>> __'
+    let commonVariable = "commonVariable" **-> commonPrefix  .>>. isNotKeyword word |>> fun (prefix, name') -> Variable (toLower prefix + " " + toLower name')
+    let simpleVariable = "simpleVariable" **-> isNotKeyword word |>> (toLower >> Variable)
+    // let pronoun = "pronoun" **-> ((keyword pronounList) .>> followedBy (is <|> says <|> __' <|> EOL <|> eof) >>% Pronoun)
+    let pronoun = "pronoun" **-> (keyword pronounList) >>% Pronoun
 
-    let poeticEmptyString = "poeticEmptyString" **-> keyword ["empty"; "silent"; "silence"] >>% StringLiteral ""
+    let variable =
+        "variable" **->
+            choice [ 
+                attempt pronoun
+                attempt properVariable
+                attempt commonVariable
+                attempt simpleVariable
+            ]
+
+    // todo: implement indexing -- bgeiger, 2023-01-08
+    let assignable = "assignable" **-> variable
+
+    let (poeticDigit : Parser<_, unit>) = "poeticDigit" **-> many1Chars (anyOf (letters + "-'")) |>> fun s -> String.length (s.Replace("'", "")) % 10
+    let poeticDigits = "poeticDigits" **-> many (anyOf poeticDigitSeparators) >>. notEmpty (sepBy' poeticDigit (skipMany (anyOf poeticDigitSeparators))) |>> (fun ds -> ds |> List.map (sprintf "%d") |> String.concat "")
+    let poeticNumber =
+        "poeticNumber" **->
+            poeticDigits .>>. (opt (pchar '.' >>. opt poeticDigits))
+            |>> fun (whole, frac') -> (whole + (frac' |> Option.flatten |> Option.defaultValue "")) |> float |> NumericValue
+
+    let poeticEmptyString = "poeticEmptyString" **-> keyword ["empty"; "silent"; "silence"] >>% StringValue ""
 
     let expression = "expression" **-> (choice [
-        stringLiteral
+        stringValue
         trueConstant
         falseConstant
-        numericLiteral
-        attempt pronoun
+        numericValue
+        pronoun
         properVariable
         commonVariable
         simpleVariable
         poeticEmptyString ])
 
+    let poeticNumericAssignment =
+        "poeticNumericAssignment" **->
+            assignable .>> is .>> __' .>>. poeticNumber
+            |>> fun (variable, value) -> Assignment (variable, value)
+
+    let poeticStringAssignment =
+        "poeticStringAssignment" **->
+            assignable .>> __ .>> says .>> pchar ' ' .>>. restOfLine false
+            |>> fun (variable, value) -> Assignment (variable, StringValue value)
+
     let output = "output" **-> (keyword ["say"; "shout"; "whisper"; "scream"]) >>. __' >>. expression |>> Output
     let (nullStatement : Parser<_, unit>) = "nullStatement" **-> preturn Null
 
-    do statementRef.Value <- "statement" **-> __ >>. choice [ output; nullStatement ]
+    let statementParsers =
+        [
+            output
+            poeticNumericAssignment
+            poeticStringAssignment
+            nullStatement
+        ]
+
+    do statementRef.Value <- "statement" **-> __ >>. (statementParsers |> List.map attempt |> choice)
     let line = "line" **-> __ >>. statement .>> noise
     let program = "program" **-> sepBy line EOL .>> eof
 
