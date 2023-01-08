@@ -8,6 +8,8 @@ module AST =
         | StringLiteral of string
         | NumericLiteral of double
         | BooleanLiteral of bool
+        | Variable of string
+        | Pronoun
 
     and Statement =
         | Null

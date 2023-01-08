@@ -12,10 +12,11 @@ module Parser =
     // Keyword Lists
     // ======================================================================
 
-    let pronounList = [
-        "he"; "her"; "him"; "hir"; "it"; "she"; "them"; "they"; "ve"; "ver";
-        "xe"; "xem"; "ze"; "zie"; "zir"
-    ]
+    let pronounList =
+        [
+            "he"; "her"; "him"; "hir"; "it"; "she"; "them"; "they"; "ve"; "ver";
+            "xe"; "xem"; "ze"; "zie"; "zir"
+        ] |> List.sortByDescending String.length
     let commonPrefixList = [ "a"; "an"; "my"; "our"; "the"; "your" ]
     let literalList = [
         "definitely"; "empty"; "false"; "false"; "gone"; "lies"; "maybe";
@@ -63,11 +64,14 @@ module Parser =
         fun (stream : CharStream<unit>) ->
             let state = stream.State
             let reply = p stream
-            if reply.Status <> Ok || List.contains (toLower reply.Result) keywordList then
+            if reply.Status <> Ok then
                 reply
-            else
+            elif List.contains (toLower reply.Result) keywordList then
+                // printfn "Keyword: %A" reply.Result
                 stream.BacktrackTo state
                 Reply(Error, messageError "keyword values are not valid here")
+            else
+                reply
 
     // debugging operator borrowed from the FParsec docs. -- bgeiger, 2023-01-07
     // let (<!>) label (p: Parser<_,_>) : Parser<_,_> =
@@ -76,6 +80,14 @@ module Parser =
             // let reply = p stream
             // printfn "%A: Leaving %s (%A)" stream.Position label reply.Status
             // reply
+
+    let (<!>) _ (p: Parser<_,_>) : Parser<_,_> = p
+
+    let keyword (keywords : string list) : Parser<string, unit> =
+        keywords
+        |> List.sortByDescending String.length
+        |> List.map (pstringCI)
+        |> choice
 
     // ======================================================================
     // Parsers
@@ -95,18 +107,17 @@ module Parser =
     let __ = skipMany (whitespace <|> comment)
     let __' = notEmpty __
 
-    let noise = skipMany (__' <|> skipAnyOf ";,.?!&")
+    let noise = skipMany (__' <|> skipAnyOf ";,.?!&i'")
 
-    let EOL = noise >>. skipNewline
+    let EOL = (opt noise) >>. skipNewline
 
     // Forward reference for statements
     let statement, statementRef = createParserForwardedToRef<Statement, unit>()
 
     let (stringLiteral : Parser<Expression, unit>) = skipChar '"' >>. (manyChars (noneOf "\n\"")) .>> skipChar '"' |>> StringLiteral
-    let emptyString = ["empty"; "silent"; "silence"] |> List.map pstringCI |> choice >>% StringLiteral ""
 
-    let trueConstant = ["true"; "ok"; "right"; "yes"] |> List.map pstringCI |> choice >>% BooleanLiteral true
-    let falseConstant = ["false"; "lies"; "wrong"; "no"] |> List.map pstringCI |> choice >>% BooleanLiteral false
+    let trueConstant = keyword ["true"; "ok"; "right"; "yes"] >>% BooleanLiteral true
+    let falseConstant = keyword ["false"; "lies"; "wrong"; "no"] >>% BooleanLiteral false
 
     // I know I should probably use FParsec's pfloat for this but it handles
     // things that Rockstar doesn't support and vice versa. -- bgeiger, 2023-01-06
@@ -116,19 +127,37 @@ module Parser =
             |>> fun ((signChar, wholeDigits), fractional) ->
                 (sprintf "%c%s%s" (Option.defaultValue ' ' signChar) wholeDigits fractional |> float |> NumericLiteral))
 
+    // note to self: this is probably going to cause ordering issues, between assignment and variable definitions. -- bgeiger, 2023-01-07
+    let is = skipStringCI "'s" <|> skipStringCI "'re" <|> (__ >>. (keyword ["is"; "was"; "are"; "were"] |>> ignore))
+   
+    let name = "name" <!> many1Chars (anyOf (letters + "'")) |>> fun (s : string) -> s.Replace("'", "")
+    let properNoun = "properNoun" <!> isNotKeyword (many1Chars2 (anyOf uppercaseLetters) (anyOf (letters + "'")))
+    let properVariable = "properVariable" <!> (sepBy1 properNoun (skipMany1 (pchar ' ')) |>> fun names -> names |> List.map toLower |> String.concat " " |> Variable)
+    // let properVariable = "properVariable" <!> (sepBy1 properNoun (skipMany1 (pchar ' ')) |>> fun names -> (printfn "%A" names; Variable "properVariable"))
+    let commonPrefix = "commonPrefix" <!> (keyword commonPrefixList)
+    let commonVariable = "commonVariable" <!> ((commonPrefix .>> __') .>>. isNotKeyword name |>> fun (prefix, name') -> Variable (toLower prefix + " " + toLower name'))
+    let simpleVariable = "simpleVariable" <!> isNotKeyword name |>> (toLower >> Variable)
+    let pronoun = "pronoun" <!> ((keyword pronounList) .>> followedBy (is <|> __ <|> EOL <|> eof) >>% Pronoun)
+
+    let poeticEmptyString = keyword ["empty"; "silent"; "silence"] >>% StringLiteral ""
+
     let expression = (choice [
         stringLiteral
-        emptyString
         trueConstant
         falseConstant
-        numericLiteral ])
+        numericLiteral
+        attempt pronoun
+        properVariable
+        commonVariable
+        simpleVariable
+        poeticEmptyString ])
 
-    let output = (["say"; "shout"; "whisper"; "scream"] |> List.map pstringCI |> choice) >>. __' >>. expression |>> Output
+    let output = (keyword ["say"; "shout"; "whisper"; "scream"]) >>. __' >>. expression |>> Output
     let (nullStatement : Parser<_, unit>) = preturn Null
 
     do statementRef.Value <- __ >>. choice [ output; nullStatement ]
     let line = __ >>. statement .>> noise
-    let program = sepBy line EOL
+    let program = sepBy line EOL .>> eof
 
     let parse source = runParserOnString program () "" source |> function
         | Success (result, _, _) -> Result.Ok result
