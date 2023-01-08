@@ -74,14 +74,14 @@ module Parser =
                 reply
 
     // debugging operator borrowed from the FParsec docs. -- bgeiger, 2023-01-07
-    // let (<!>) label (p: Parser<_,_>) : Parser<_,_> =
+    // let ( **-> ) label (p: Parser<_,_>) : Parser<_,_> =
         // fun stream ->
             // printfn "%A: Entering %s" stream.Position label
             // let reply = p stream
             // printfn "%A: Leaving %s (%A)" stream.Position label reply.Status
             // reply
 
-    let (<!>) _ (p: Parser<_,_>) : Parser<_,_> = p
+    let ( **-> ) _ (p: Parser<_,_>) : Parser<_,_> = p
 
     let keyword (keywords : string list) : Parser<string, unit> =
         keywords
@@ -102,46 +102,46 @@ module Parser =
     // Markup details (comments, whitespace)
     // ----------------------------------------------------------------------
 
-    let comment = (skipChar '(') >>. (skipCharsTillString ")" true System.Int32.MaxValue)
-    let whitespace = skipMany1 (anyOf " \t")
-    let __ = skipMany (whitespace <|> comment)
-    let __' = notEmpty __
+    let comment = "comment" **-> (skipChar '(') >>. (skipCharsTillString ")" true System.Int32.MaxValue)
+    let whitespace = "whitespace" **-> skipMany1 (anyOf " \t")
+    let __ = "__" **-> skipMany (whitespace <|> comment)
+    let __' = "__'" **-> notEmpty __
 
-    let noise = skipMany (__' <|> skipAnyOf ";,.?!&i'")
+    let noise = "noise" **-> skipMany (__' <|> skipAnyOf ";,.?!&i'")
 
-    let EOL = (opt noise) >>. skipNewline
+    let EOL = "EOL" **-> (opt noise) >>. skipNewline
 
     // Forward reference for statements
     let statement, statementRef = createParserForwardedToRef<Statement, unit>()
 
-    let (stringLiteral : Parser<Expression, unit>) = skipChar '"' >>. (manyChars (noneOf "\n\"")) .>> skipChar '"' |>> StringLiteral
+    let (stringLiteral : Parser<Expression, unit>) = "stringLiteral" **-> skipChar '"' >>. (manyChars (noneOf "\n\"")) .>> skipChar '"' |>> StringLiteral
 
-    let trueConstant = keyword ["true"; "ok"; "right"; "yes"] >>% BooleanLiteral true
-    let falseConstant = keyword ["false"; "lies"; "wrong"; "no"] >>% BooleanLiteral false
+    let trueConstant = "trueConstant" **-> keyword ["true"; "ok"; "right"; "yes"] >>% BooleanLiteral true
+    let falseConstant = "falseConstant" **-> keyword ["false"; "lies"; "wrong"; "no"] >>% BooleanLiteral false
 
     // I know I should probably use FParsec's pfloat for this but it handles
     // things that Rockstar doesn't support and vice versa. -- bgeiger, 2023-01-06
     let (numericLiteralFractionalPart : Parser<_, unit>)  = manyChars2 (pchar '.') digit
     let numericLiteral = 
+        "numericLiteral" **->
         (notEmpty ((opt (pchar '-')) .>>. manyChars digit .>>. numericLiteralFractionalPart)
             |>> fun ((signChar, wholeDigits), fractional) ->
                 (sprintf "%c%s%s" (Option.defaultValue ' ' signChar) wholeDigits fractional |> float |> NumericLiteral))
 
     // note to self: this is probably going to cause ordering issues, between assignment and variable definitions. -- bgeiger, 2023-01-07
-    let is = skipStringCI "'s" <|> skipStringCI "'re" <|> (__ >>. (keyword ["is"; "was"; "are"; "were"] |>> ignore))
-   
-    let name = "name" <!> many1Chars (anyOf (letters + "'")) |>> fun (s : string) -> s.Replace("'", "")
-    let properNoun = "properNoun" <!> isNotKeyword (many1Chars2 (anyOf uppercaseLetters) (anyOf (letters + "'")))
-    let properVariable = "properVariable" <!> (sepBy1 properNoun (skipMany1 (pchar ' ')) |>> fun names -> names |> List.map toLower |> String.concat " " |> Variable)
-    // let properVariable = "properVariable" <!> (sepBy1 properNoun (skipMany1 (pchar ' ')) |>> fun names -> (printfn "%A" names; Variable "properVariable"))
-    let commonPrefix = "commonPrefix" <!> (keyword commonPrefixList)
-    let commonVariable = "commonVariable" <!> ((commonPrefix .>> __') .>>. isNotKeyword name |>> fun (prefix, name') -> Variable (toLower prefix + " " + toLower name'))
-    let simpleVariable = "simpleVariable" <!> isNotKeyword name |>> (toLower >> Variable)
-    let pronoun = "pronoun" <!> ((keyword pronounList) .>> followedBy (is <|> __ <|> EOL <|> eof) >>% Pronoun)
+    let is = "is" **-> skipStringCI "'s" <|> skipStringCI "'re" <|> (__ >>. (keyword ["is"; "was"; "are"; "were"] |>> ignore))
 
-    let poeticEmptyString = keyword ["empty"; "silent"; "silence"] >>% StringLiteral ""
+    let name = "name" **-> many1Chars (anyOf (letters + "'")) |>> fun (s : string) -> s.Replace("'", "")
+    let properNoun = "properNoun" **-> isNotKeyword (many1Chars2 (anyOf uppercaseLetters) (anyOf (letters + "'")))
+    let properVariable = "properVariable" **-> sepBy1 properNoun (skipMany1 (pchar ' ')) |>> fun names -> names |> List.map toLower |> String.concat " " |> Variable
+    let commonPrefix = "commonPrefix" **-> keyword commonPrefixList
+    let commonVariable = "commonVariable" **-> (commonPrefix .>> __') .>>. isNotKeyword name |>> fun (prefix, name') -> Variable (toLower prefix + " " + toLower name')
+    let simpleVariable = "simpleVariable" **-> isNotKeyword name |>> (toLower >> Variable)
+    let pronoun = "pronoun" **-> ((keyword pronounList) .>> followedBy (is <|> __ <|> EOL <|> eof) >>% Pronoun)
 
-    let expression = (choice [
+    let poeticEmptyString = "poeticEmptyString" **-> keyword ["empty"; "silent"; "silence"] >>% StringLiteral ""
+
+    let expression = "expression" **-> (choice [
         stringLiteral
         trueConstant
         falseConstant
@@ -152,12 +152,12 @@ module Parser =
         simpleVariable
         poeticEmptyString ])
 
-    let output = (keyword ["say"; "shout"; "whisper"; "scream"]) >>. __' >>. expression |>> Output
-    let (nullStatement : Parser<_, unit>) = preturn Null
+    let output = "output" **-> (keyword ["say"; "shout"; "whisper"; "scream"]) >>. __' >>. expression |>> Output
+    let (nullStatement : Parser<_, unit>) = "nullStatement" **-> preturn Null
 
-    do statementRef.Value <- __ >>. choice [ output; nullStatement ]
-    let line = __ >>. statement .>> noise
-    let program = sepBy line EOL .>> eof
+    do statementRef.Value <- "statement" **-> __ >>. choice [ output; nullStatement ]
+    let line = "line" **-> __ >>. statement .>> noise
+    let program = "program" **-> sepBy line EOL .>> eof
 
     let parse source = runParserOnString program () "" source |> function
         | Success (result, _, _) -> Result.Ok result
