@@ -74,8 +74,8 @@ module Parsers =
 
     // debugging operator borrowed from the FParsec docs. -- bgeiger, 2023-01-07
     let ( **-> ) label (p: Parser<_,_>) : Parser<_,_> =
-        let DEBUG = true
-        // let DEBUG = false
+        // let DEBUG = true
+        let DEBUG = false
         if DEBUG then
             fun stream ->
                 printfn "%A: Entering %s" stream.Position label
@@ -198,21 +198,13 @@ module Parsers =
         "arithmeticTerm" **->
             simpleExpression .>>. many (attempt (__ >>. (multiply <|> divide) .>> __ .>>. simpleExpression))
             |>> fun (cur, rest) ->
-                let rec combine (cur', rest') =
-                    match rest' with
-                    | [] -> cur'
-                    | (op, factor) :: t -> BinaryOperation (cur', op, combine(factor, t))
-                combine (cur, rest)
+                rest |> List.fold (fun result (curOp, curExpr) -> BinaryOperation (result, curOp, curExpr)) cur
 
     let arithmetic =
         "arithmetic" **->
             arithmeticTerm .>>. attempt (many (__ >>. (attempt add <|> subtract) .>> __ .>>. arithmeticTerm))
             |>> fun (cur, rest) ->
-                let rec combine (cur', rest') =
-                    match rest' with
-                    | [] -> cur'
-                    | (op, term) :: t -> BinaryOperation (cur', op, combine (term, t))
-                combine (cur, rest)
+                rest |> List.fold (fun result (curOp, curExpr) -> BinaryOperation (result, curOp, curExpr)) cur
 
     let compoundableOperator = [ add; subtract; multiply; divide ] |> List.map attempt |> choice
 
