@@ -169,35 +169,56 @@ module Parsers =
 
     let poeticEmptyString = "poeticEmptyString" **-> keyword ["empty"; "silent"; "silence"] >>% StringValue ""
 
-    let simpleExpression = "simpleExpression" **-> (choice [
+    let simpleExpression = "simpleExpression" **-> ([
         stringLiteral
         trueConstant
         falseConstant
         numericLiteral
         attempt variable
-        poeticEmptyString ])
+        poeticEmptyString ] |> List.map attempt |> choice)
+
+    let expressionListSeparator =
+        "expressionListSeparator" **->
+            __ >>. ([
+                pchar ',' >>. __ >>. pstringCI "and" >>. __' |>> ignore
+                pchar '&' |>> ignore
+                pchar ',' |>> ignore
+                pstringCI "'n'" |>> ignore
+            ] |> choice) >>. __ |>> ignore
+
+    let expressionList = "expressionList" **-> sepBy' expression expressionListSeparator
+
 
     let add = "add" **-> __ >>. keyword ["+"; "plus"; "with"] .>> __' >>% Add
     let subtract = "subtract" **-> __ >>. keyword ["-"; "minus"; "without"] .>> __' >>% Subtract
     let multiply = "multiply" **-> __ >>. keyword ["*"; "times"; "of"] .>> __' >>% Multiply
     let divide = "divide" **-> __ >>. keyword ["/"; "over"; "between"] .>> __' >>% Divide
 
-    let rec product =
-        "product" **->
-            simpleExpression .>> __ .>>. opt ((multiply <|> divide) .>> __ .>>. expression)
-            |>> fun (left, right) ->
-                match right with
-                | None -> left
-                // TODO: I'm pretty sure this pooches precedence but I'll get back to it. -- bgeiger, 2023-01-08
-                | Some (operator, right') -> BinaryOperation (left, operator, right')
+    let arithmeticTerm =
+        "arithmeticTerm" **->
+            simpleExpression .>>. many (attempt (__ >>. (multiply <|> divide) .>> __ .>>. simpleExpression))
+            |>> fun (cur, rest) ->
+                let rec combine (cur', rest') =
+                    match rest' with
+                    | [] -> cur'
+                    | (op, factor) :: t -> BinaryOperation (cur', op, combine(factor, t))
+                combine (cur, rest)
 
-    // let arithmetic = "arithmetic" **-> 
+    let arithmetic =
+        "arithmetic" **->
+            arithmeticTerm .>>. attempt (many (__ >>. (attempt add <|> subtract) .>> __ .>>. arithmeticTerm))
+            |>> fun (cur, rest) ->
+                let rec combine (cur', rest') =
+                    match rest' with
+                    | [] -> cur'
+                    | (op, term) :: t -> BinaryOperation (cur', op, combine (term, t))
+                combine (cur, rest)
 
     let compoundableOperator = [ add; subtract; multiply; divide ] |> List.map attempt |> choice
 
     let expressionParsers =
         [
-            product
+            arithmetic
             simpleExpression
         ]
 
@@ -231,8 +252,8 @@ module Parsers =
             output
             poeticNumericAssignment
             poeticStringAssignment
-            compoundAssignment
             directAssignment
+            compoundAssignment
             nullStatement
         ]
 
@@ -241,5 +262,9 @@ module Parsers =
     let program = "program" **-> sepBy line EOL .>> eof
 
 let parse source = runParserOnString Parsers.program () "" source |> function
+    | Success (result, _, _) -> Result.Ok result
+    | Failure (errorAsString, _, _) -> Result.Error errorAsString
+
+let parseTest source = runParserOnString Parsers.arithmetic () "" source |> function
     | Success (result, _, _) -> Result.Ok result
     | Failure (errorAsString, _, _) -> Result.Error errorAsString

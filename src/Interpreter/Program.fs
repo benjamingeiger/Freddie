@@ -49,7 +49,7 @@ let testInput =
         "Let my body be your flame"
         "shout your good times (with) my pain"
         "whisper your time between loves"
-        // "Let your life be pain with joy"
+        "Let your life be pain with joy between lovers without fear"
     ] |> String.concat "\n"
 
 [<EntryPoint>]
@@ -58,5 +58,8 @@ let main argv =
     match result with
     | Result.Ok result' -> List.iter (printfn "%A") result'
     | Result.Error error -> failwithf "Parse failed: %s" error
+
+    // let result = Parser.parseTest "pain without fear"
+    // printfn "%A" result
 
     0
