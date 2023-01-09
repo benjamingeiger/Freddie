@@ -141,12 +141,31 @@ module Parsers =
     let says = "says" **-> keyword [ "say"; "says"; "said" ] |>> ignore
 
     let properNoun = "properNoun" **-> isNotKeyword (many1Chars2 (anyOf uppercaseLetters) (anyOf (letters)))
-    let properVariable = "properVariable" **-> sepBy1 properNoun (skipMany1 (pchar ' ')) |>> fun names -> names |> List.map toLower |> String.concat " " |> Variable
-    let commonPrefix = "commonPrefix" **-> keyword commonPrefixList .>> __'
-    let commonVariable = "commonVariable" **-> commonPrefix  .>>. isNotKeyword word |>> fun (prefix, name') -> Variable (toLower prefix + " " + toLower name')
-    let simpleVariable = "simpleVariable" **-> isNotKeyword word |>> (toLower >> Variable)
+
+    let properVariable =
+        "properVariable" **->
+            sepBy1 properNoun (skipMany1 (pchar ' '))
+            |>> fun names -> names |> List.map toLower |> String.concat " " |> Variable
+
+    let commonPrefix =
+        "commonPrefix" **->
+            keyword commonPrefixList .>> __'
+
+    let commonVariable = 
+        "commonVariable" **->
+            commonPrefix  .>>. isNotKeyword word
+            |>> fun (prefix, name') -> Variable (toLower prefix + " " + toLower name')
+
+    let simpleVariable =
+        "simpleVariable" **->
+            isNotKeyword word
+            |>> (toLower >> Variable)
+    
     // let pronoun = "pronoun" **-> ((keyword pronounList) .>> followedBy (is <|> says <|> __' <|> EOL <|> eof) >>% Pronoun)
-    let pronoun = "pronoun" **-> (keyword pronounList) >>% Pronoun
+    let pronoun =
+        "pronoun" **->
+            (keyword pronounList)
+            >>% Pronoun
 
     let variable =
         "variable" **->
@@ -161,7 +180,11 @@ module Parsers =
     let assignable = "assignable" **-> variable
 
     let (poeticDigit : Parser<_, unit>) = "poeticDigit" **-> many1Chars (anyOf (letters + "-'")) |>> fun s -> String.length (s.Replace("'", "")) % 10
-    let poeticDigits = "poeticDigits" **-> many (anyOf poeticDigitSeparators) >>. notEmpty (sepBy' poeticDigit (skipMany (anyOf poeticDigitSeparators))) |>> (fun ds -> ds |> List.map (sprintf "%d") |> String.concat "")
+    let poeticDigits =
+        "poeticDigits" **->
+            many (anyOf poeticDigitSeparators) >>. notEmpty (sepBy' poeticDigit (skipMany (anyOf poeticDigitSeparators)))
+            |>> (fun ds -> ds |> List.map (sprintf "%d") |> String.concat "")
+
     let poeticNumber =
         "poeticNumber" **->
             poeticDigits .>>. (opt (pchar '.' >>. opt poeticDigits))
@@ -187,7 +210,6 @@ module Parsers =
             ] |> choice) >>. __ |>> ignore
 
     let expressionList = "expressionList" **-> sepBy' expression expressionListSeparator
-
 
     let add = "add" **-> __ >>. keyword ["+"; "plus"; "with"] .>> __' >>% Add
     let subtract = "subtract" **-> __ >>. keyword ["-"; "minus"; "without"] .>> __' >>% Subtract
