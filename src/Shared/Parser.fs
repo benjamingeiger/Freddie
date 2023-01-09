@@ -187,8 +187,14 @@ module Parsers =
 
     let poeticNumber =
         "poeticNumber" **->
-            poeticDigits .>>. (opt (pchar '.' >>. opt poeticDigits))
-            |>> fun (whole, frac') -> (whole + (frac' |> Option.flatten |> Option.defaultValue "")) |> float |> NumericValue
+            poeticDigits .>>. (opt (pchar '.' .>>. opt poeticDigits))
+            |>> fun (whole, frac') ->
+                let frac = 
+                    match frac' with
+                    | Some (_, Some frac) -> sprintf ".%s" frac
+                    | Some (_, None) -> ".0"
+                    | None -> ".0"
+                (whole + frac) |> float |> NumericValue
 
     let poeticEmptyString = "poeticEmptyString" **-> keyword ["empty"; "silent"; "silence"] >>% StringValue ""
 
