@@ -247,6 +247,11 @@ module Parsers =
 
     do expressionRef.Value <- "expression" **-> (expressionParsers |> List.map attempt |> choice)
 
+    let poeticConstantAssignment =
+        "poeticConstantAssignment" **->
+            assignable .>> is .>> __ .>>. choice [ trueConstant; falseConstant ]
+            |>> fun (variable, value) -> Assignment (variable, value)
+
     let poeticNumericAssignment =
         "poeticNumericAssignment" **->
             assignable .>> is .>> __ .>>. poeticNumber
@@ -273,6 +278,7 @@ module Parsers =
     let statementParsers =
         [
             output
+            poeticConstantAssignment
             poeticNumericAssignment
             poeticStringAssignment
             directAssignment

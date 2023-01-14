@@ -138,6 +138,23 @@ let ``parser can read variables (common, simple, and proper)`` () =
 
     Assert.AreEqual(expected, actual)
 
+[<Test>]
+let ``parser can assign poetic constants`` () =
+    let expected : Result<_, string> =
+        Result.Ok [
+            Assignment (Variable "my heart", BooleanValue true)
+            Assignment (Variable "your soul", BooleanValue false)
+        ]
+
+    let source =
+        [
+            "my heart is true"
+            "your soul is lies"
+        ] |> String.concat "\n"
+    let actual = parse source
+
+    Assert.AreEqual(expected, actual)
+
 // TODO: Figure out how to handle tolerance of floating point numbers in NUnit/FsUnit. -- bgeiger, 2023-01-08
 [<Test>]
 let ``parser can assign poetic numerals`` () =
