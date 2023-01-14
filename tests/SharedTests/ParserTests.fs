@@ -76,6 +76,82 @@ let ``outputting a numeric literal works`` () =
     Assert.AreEqual(expected, actual)
 
 [<Test>]
+let ``outputting a null literal works`` () =
+    let expected : Result<_, string> =
+        Result.Ok [
+            Output NullValue
+            Output NullValue
+            Output NullValue
+            Output NullValue
+            Output NullValue
+        ]
+
+    let source =
+        [
+            "shout null"
+            "shout nothing"
+            "shout nowhere"
+            "shout nobody"
+            "shout gone"
+        ] |> String.concat "\n"
+    let actual = parse source
+
+    Assert.AreEqual(expected, actual)
+
+[<Test>]
+let ``assigning a null literal works`` () =
+    let expected : Result<_, string> =
+        Result.Ok [
+            Assignment (Variable "my life", NullValue)
+            Assignment (Variable "my money", NullValue)
+            Assignment (Variable "my love", NullValue)
+            Assignment (Variable "my friends", NullValue)
+            Assignment (Variable "my time", NullValue)
+        ]
+
+    let source =
+        [
+            "my life is null"
+            "my money's nothing"
+            "my love was nowhere"
+            "my friends are nobody"
+            "my time is gone"
+        ] |> String.concat "\n"
+    let actual = parse source
+
+    Assert.AreEqual(expected, actual)
+
+[<Test>]
+let ``outputting a mysterious literal works`` () =
+    let expected : Result<_, string> =
+        Result.Ok [
+            Output MysteriousValue
+        ]
+
+    let source =
+        [
+            "shout mysterious"
+        ] |> String.concat "\n"
+    let actual = parse source
+
+    Assert.AreEqual(expected, actual)
+
+[<Test>]
+let ``assigning a mysterious literal works`` () =
+    let expected : Result<_, string> =
+        Result.Ok [
+            Assignment (Variable "johnny", MysteriousValue)
+        ]
+
+    let source =
+        [
+            "johnny was mysterious"
+        ] |> String.concat "\n"
+    let actual = parse source
+
+    Assert.AreEqual(expected, actual)
+
+[<Test>]
 let ``outputting a pronoun works`` () =
     let expected : Result<_, string> =
         Result.Ok [

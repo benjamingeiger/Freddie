@@ -124,6 +124,8 @@ module Parsers =
 
     let (stringLiteral : Parser<Expression, unit>) = "stringLiteral" **-> skipChar '"' >>. (manyChars (noneOf "\n\"")) .>> skipChar '"' |>> StringValue
 
+    let mysteriousConstant = "mysteriousConstant" **-> keyword ["mysterious"] >>% MysteriousValue
+    let nullConstant = "nullConstant" **-> keyword ["null"; "nothing"; "nowhere"; "nobody"; "gone"] >>% NullValue
     let trueConstant = "trueConstant" **-> keyword ["true"; "ok"; "right"; "yes"] >>% BooleanValue true
     let falseConstant = "falseConstant" **-> keyword ["false"; "lies"; "wrong"; "no"] >>% BooleanValue false
 
@@ -202,6 +204,8 @@ module Parsers =
         "simpleExpression" **->
             ([
                 stringLiteral
+                mysteriousConstant
+                nullConstant
                 trueConstant
                 falseConstant
                 numericLiteral
@@ -249,7 +253,7 @@ module Parsers =
 
     let poeticConstantAssignment =
         "poeticConstantAssignment" **->
-            assignable .>> is .>> __ .>>. choice [ trueConstant; falseConstant ]
+            assignable .>> is .>> __ .>>. choice [ mysteriousConstant; nullConstant; trueConstant; falseConstant ]
             |>> fun (variable, value) -> Assignment (variable, value)
 
     let poeticNumericAssignment =

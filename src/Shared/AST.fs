@@ -14,6 +14,8 @@ module AST =
         | StringValue of string
         | NumericValue of double
         | BooleanValue of bool
+        | NullValue
+        | MysteriousValue
         | Variable of string
         | Pronoun
         | BinaryOperation of Expression * Operator * Expression
