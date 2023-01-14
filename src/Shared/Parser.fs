@@ -172,7 +172,7 @@ module Parsers =
             choice [
                 pronoun
                 commonVariable
-                properVariable
+                attempt properVariable
                 simpleVariable
             ]
 
@@ -182,7 +182,7 @@ module Parsers =
     let (poeticDigit : Parser<_, unit>) = "poeticDigit" **-> many1Chars (anyOf (letters + "-'")) |>> fun s -> String.length (s.Replace("'", "")) % 10
     let poeticDigits =
         "poeticDigits" **->
-            many (anyOf poeticDigitSeparators) >>. notEmpty (sepBy' poeticDigit (skipMany (anyOf poeticDigitSeparators)))
+            many (anyOf poeticDigitSeparators) >>. (sepEndBy1 poeticDigit (many (skipAnyOf poeticDigitSeparators <|> __)))
             |>> (fun ds -> ds |> List.map (sprintf "%d") |> String.concat "")
 
     let poeticNumber =
