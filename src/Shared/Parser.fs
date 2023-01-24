@@ -78,7 +78,7 @@ module Parsers =
         let DEBUG = false
         if DEBUG then
             fun stream ->
-                printfn "%A: Entering %s" stream.Position label
+                printfn "%A: Entering %s [%s]" stream.Position label (stream.PeekString 32)
                 let reply = p stream
                 printfn "%A: Leaving %s (%A)" stream.Position label reply.Status
                 reply
@@ -91,7 +91,7 @@ module Parsers =
         |> List.map (pstringCI)
         |> choice
 
-    let sepBy' p sep = pipe2 p (many (sep >>. p)) (fun hd tl -> hd::tl) <|>% []
+    // let sepBy' p sep = pipe2 p (many (sep >>. p)) (fun hd tl -> hd::tl) <|>% []
 
     // ======================================================================
     // Parsers
@@ -111,7 +111,7 @@ module Parsers =
 
     let comment = "comment" **-> (skipChar '(') >>. (skipCharsTillString ")" true System.Int32.MaxValue)
     let whitespace = "whitespace" **-> skipMany1 (anyOf " \t")
-    let __' = "__'" **-> skipMany (whitespace <|> comment)
+    let __' = "__'" **-> attempt (skipMany (whitespace <|> comment))
     let __ = "__" **-> notEmpty __'
 
     let noise = "noise" **-> skipMany (__ <|> skipAnyOf noiseChars)
@@ -162,7 +162,7 @@ module Parsers =
         "simpleVariable" **->
             isNotKeyword word
             |>> (toLower >> Variable)
-    
+
     // let pronoun = "pronoun" **-> ((keyword pronounList) .>> followedBy (is <|> says <|> __' <|> EOL <|> eof) >>% Pronoun)
     let pronoun =
         "pronoun" **->
@@ -173,7 +173,7 @@ module Parsers =
         "variable" **->
             choice [
                 pronoun
-                commonVariable
+                attempt commonVariable
                 attempt properVariable
                 simpleVariable
             ]
@@ -211,35 +211,39 @@ module Parsers =
                 numericLiteral
                 attempt variable
                 poeticEmptyString
-            ] |> List.map attempt |> choice)
+            ] |> List.map attempt |> choice) .>> attempt __'
 
     let expressionListSeparator =
         "expressionListSeparator" **->
             ([
-                skipChar ',' >>. __' >>. skipStringCI "and" >>. __
+                skipChar ',' .>> attempt (opt (__' >>. opt (skipStringCI "and")))
                 skipChar '&'
-                skipChar ','
                 skipStringCI "'n'"
             ] |> choice) >>. __' |>> ignore
 
-    let expressionList = "expressionList" **-> sepBy' expression expressionListSeparator
+    let expressionList = "expressionList" **-> sepBy1 simpleExpression (attempt __' >>. expressionListSeparator)
 
     let add = "add" **-> keyword ["+"; "plus"; "with"] .>> __ >>% Add
     let subtract = "subtract" **-> keyword ["-"; "minus"; "without"] .>> __ >>% Subtract
     let multiply = "multiply" **-> keyword ["*"; "times"; "of"] .>> __ >>% Multiply
     let divide = "divide" **-> keyword ["/"; "over"; "between"] .>> __ >>% Divide
 
+    let rec consolidateExpressions first op = function
+        | [] -> failwith "what should we do here?"
+        | [expr] -> BinaryOperation (first, op, expr)
+        | expr :: rest -> consolidateExpressions (BinaryOperation (first, op, expr)) op rest
+
     let arithmeticTerm =
         "arithmeticTerm" **->
-            simpleExpression .>>. many (attempt (__ >>. (multiply <|> divide) .>> __' .>>. simpleExpression))
+            simpleExpression .>>. many (attempt ((multiply <|> divide) .>> __' .>>. expressionList))
             |>> fun (cur, rest) ->
-                rest |> List.fold (fun result (curOp, curExpr) -> BinaryOperation (result, curOp, curExpr)) cur
+                rest |> List.fold (fun result (curOp, curExprs) -> consolidateExpressions result curOp curExprs) cur
 
     let arithmetic =
         "arithmetic" **->
-            arithmeticTerm .>>. attempt (many (__ >>. (attempt add <|> subtract) .>> __' .>>. arithmeticTerm))
+            arithmeticTerm .>>. many (attempt ((subtract <|> add) .>>. (attempt (many1 arithmeticTerm) <|> (attempt expressionList))))
             |>> fun (cur, rest) ->
-                rest |> List.fold (fun result (curOp, curExpr) -> BinaryOperation (result, curOp, curExpr)) cur
+                rest |> List.fold (fun result (curOp, curExprs) -> consolidateExpressions result curOp curExprs) cur
 
     let compoundableOperator = [ add; subtract; multiply; divide ] |> List.map attempt |> choice
 
@@ -250,6 +254,8 @@ module Parsers =
         ]
 
     do expressionRef.Value <- "expression" **-> (expressionParsers |> List.map attempt |> choice)
+
+    // Statements
 
     let poeticConstantAssignment =
         "poeticConstantAssignment" **->
@@ -268,8 +274,8 @@ module Parsers =
 
     let compoundAssignment =
         "compoundAssignment" **->
-            pstringCI "let" >>. __ >>. assignable .>> __ .>> pstringCI "be" .>> __ .>>. compoundableOperator .>>. expression
-            |>> fun ((target, operator), value) -> Assignment (target, BinaryOperation (target, operator, value))
+            pstringCI "let" >>. __ >>. assignable .>> __ .>> pstringCI "be" .>> __ .>>. compoundableOperator .>> __' .>>.  ((attempt expressionList) <|> (many1 expression))
+            |>> fun ((target, operator), values) -> Assignment (target, consolidateExpressions target operator values)
 
     let directAssignment =
         "directAssignment" **->
@@ -285,8 +291,8 @@ module Parsers =
             poeticConstantAssignment
             poeticNumericAssignment
             poeticStringAssignment
+            attempt compoundAssignment
             directAssignment
-            compoundAssignment
             nullStatement
         ]
 

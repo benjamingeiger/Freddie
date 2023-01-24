@@ -335,3 +335,48 @@ let ``parser can handle addition and subtraction with precedence`` () =
     let actual = parse source
 
     Assert.AreEqual(expected, actual)
+
+
+[<Test>]
+let ``can parse multiplication with list on the right`` () =
+    let expected : Result<_, string> =
+        Result.Ok [
+            Assignment (
+                Variable "the wolf",
+                NumericValue 63236)
+            Assignment (
+                Variable "fear",
+                NumericValue 346)
+            Assignment (
+                Variable "fury",
+                NumericValue 355)
+            Assignment (
+                Variable "hate",
+                NumericValue 345)
+            Assignment (
+                Variable "the wolf",
+                BinaryOperation (
+                    BinaryOperation (
+                        BinaryOperation (
+                            Variable "the wolf",
+                            Subtract,
+                            Variable "fear"),
+                        Subtract,
+                        Variable "fury"),
+                    Subtract,
+                    Variable "hate"))
+            Output (Variable "the wolf")
+        ]
+
+    let source =
+        [
+            "The wolf is hungry, out on the street (initialise the_wolf = 63236)"
+            "Fear is the mind killer (fear = 346)"
+            "Fury is the demon child (fury = 355)"
+            "Hate is the only truth (hate = 345)"
+            "Let the wolf be without fear, fury, and hate (the_wolf = the_wolf - 346 - 355 - 345) "
+            "Shout the wolf (output 62190)"
+        ] |> String.concat "\n"
+    let actual = parse source
+
+    Assert.AreEqual(expected, actual)

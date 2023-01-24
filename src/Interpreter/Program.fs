@@ -24,8 +24,10 @@ open Freddie.Shared
 
 let testInput =
     [
-        "My dreams were ice. A life unfulfilled; wakin' everybody up, taking booze and pills"
-        // "Let your life be pain with joy between lovers without fear"
+        // "My dreams were ice. A life unfulfilled; wakin' everybody up, taking booze and pills"
+        "Let your life be pain with joy between lovers without fear"
+        // "let the wolf be without fear, anger, and hate"
+        // "johnny was mysterious"
     ] |> String.concat "\n"
 
 [<EntryPoint>]
